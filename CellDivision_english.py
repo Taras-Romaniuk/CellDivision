@@ -455,7 +455,7 @@ firstentities = 1
 
 root = ThemedTk(theme="black")
 img1 = PhotoImage(data=icon)
-root.call('wm', 'iconphoto', root.w, img1)
+root.call('wm', 'iconphoto', root._w, img1)
 root.geometry("+0+0")
 root.config(bg="#424242")
 root.title("OOP.Entities")
