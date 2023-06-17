@@ -15,13 +15,13 @@ matplotlib.use("TkAgg")
 class Entity(object):
 
     def __init__(self, x, y, dir1):
-        global colors, deathage, activeage, passiveage, deathprobability, children, usedcoords, amount
+        global colors, amount
         global born, step, decsize
         amount += 1
         born += 1
         usedcoords.append(dir1)
         self.cll = len(colors)
-        if bv4.get():
+        if randomness:
             self.children = random.randint(0, children)
         else:
             self.children = children
@@ -55,33 +55,33 @@ class Entity(object):
         c.tag_bind(self.entity, "<Enter>", lambda e: PlaceInfo(e, self.age, self.chcount, self.suddendeathage))
         c.tag_bind(self.entity, "<Leave>", lambda e: UnplaceInfo())
 
-    def MyTimeHasCome(self, msg=False):
-        global usedcoords, amount, allamount, dead, entities, deathage, end
+
+    def RemoveFromCanvas(self):
+        if infolabel.winfo_ismapped():
+            UnplaceInfo()
+        c.delete(self.entity)
+
+
+    def MyTimeHasCome(self):
+        global amount, dead, end
         amount -= 1
         dead += 1
         pb.config(value=amount / allamount * 100)
         usedcoords.remove(self.dir1)
-        if infolabel.winfo_ismapped():
-            UnplaceInfo()
-        if msg:
-            m = deathage if self.suddendeathage == None else self.suddendeathage
-            lbr.insert(0, f"Entity died in the age of {m}")
-        c.delete(self.entity)
+        self.RemoveFromCanvas()
         del entities[entities.index(self)]
-        if amount == 0 and msg:
+        if amount == 0:
             end = True
-            Stop()
-            showinfo("All entities became extinct!",
+            End("All entities became extinct!",
                      f"Time: {time}\nThe number of entities born:{born}\nThe number of dead:{dead}")
-            ShowStatistics()
 
     def IncreaseAge(self):  # The age increases by one unit
-        global amount, allamount, end, entities, deathage, activeage, colors
+        global end, entities
         self.age += 1
         if self.age == self.suddendeathage or self.age == deathage:  # If sudden death occurs or death occurs
-            self.MyTimeHasCome(True)
-        else:
-            if self.showcolor:
+            self.MyTimeHasCome()
+        else: # If there was no death
+            if self.showcolor: # If parameter CheckBox "Change colour" is clicked
                 if self.s != self.cll and self.age == self.k * (self.s + 1):  # Change the colour
                     c.itemconfig(self.entity, fill=colors[self.s], outline=colors[self.s])
                     self.s += 1
@@ -91,9 +91,9 @@ class Entity(object):
             elif self.age >= passiveage and self.showungrowing:  # Decrease entity size
                 self.dsz -= 1
                 ShowUngrowing(self.entity, self.cx, self.cy, self.dsz)
-            if self.age in self.chbirth:
+            if self.age in self.chbirth: # If entity produces offspring in this age
                 end = False
-                for i in range(self.chbirth.count(self.age)):
+                for i in range(self.chbirth.count(self.age)): # Possibly several children in this age
                     if amount != allamount:
                         entities += [CreateEntity(self.cx, self.cy, self.dir1)]
                         self.chcount += 1
@@ -101,15 +101,33 @@ class Entity(object):
                         end = True
                         break
                 if end:
-                    Stop()
-                    showinfo("There is no place!",
+                    End("There is no place!",
                              f"Time: {time}\nThe number of entities born:{born}\nThe number of dead:{dead}")
-                    ShowStatistics()
+
+
+def End(title, msg):
+    AddPopulation()
+    lbr.insert(0, f"Population_{population_key}")
+    Stop()
+    showinfo(title, msg)
+    ShowStatistics()
 
 
 def PlaceInfo(event, *args):  # Show entity info on Label
     infolabel.config(text=f"Age:{args[0]}\nChildren:{args[1]}\nSudden death:{args[2]}")
-    infolabel.place(x=event.x + 10, y=event.y + 10)
+    lw, lh = infolabel.winfo_width(), infolabel.winfo_height()
+    if event.x + lw/2 > wd and event.y + lh/2 > ht:
+        infolabel.place(x=event.x - lw, y=event.y - lh - 4)
+    elif event.x - lw/2 < 0 and event.y - lh/2 < 0:
+        infolabel.place(x=event.x + 10, y=event.y + 10)
+    elif event.x + lw/2 > wd:
+        infolabel.place(x=event.x - lw, y=event.y + 10)
+    elif event.x - lw/2 < 0:
+        infolabel.place(x=event.x + 10, y=event.y + 10)
+    elif event.y - lh/2 < 0:
+        infolabel.place(x=event.x - lw/2, y=event.y + 10)
+    else:
+        infolabel.place(x=event.x - lw/2, y=event.y + 10)
 
 
 def UnplaceInfo(event=None):  # Hide Label
@@ -117,21 +135,20 @@ def UnplaceInfo(event=None):  # Hide Label
 
 
 def ShowGrowing(ent, x, y, d):  # Entity size changes
-    global incsize
     ds = (d * incsize) / 2
     c.coords(ent, x + ds, y + ds, x - ds, y - ds)
 
 
 def ShowUngrowing(ent, x, y, d):
-    global decsize
     ds = (d * decsize) / 2
     c.coords(ent, x + ds, y + ds, x - ds, y - ds)
 
 
 class CreateEntity(Entity):
 
-    def __init__(self, cx, cy, dir1):
-        global usedcoords, activeage, entities, allamount, amount, a, time, step
+    """Creates entity in the nearest place"""
+
+    def __init__(self, cx, cy, dir1): # !!!!!!!!!
         w1 = [(-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (-1, -1), (1, 1)]
         while len(w1) != 0:
             i = random.randint(0, len(w1) - 1)
@@ -181,72 +198,123 @@ def CanvasBG():  # Changes canvas colour
 
 
 def Remove():
-    global acting, time, entities, usedcoords, amount, birthrate, built, born, dead
+    global acting, time, amount, birthrate, built, born, dead, usedcoords, entities
+    for entity in entities:
+        entity.RemoveFromCanvas()
+    entities, usedcoords = [], []
     birthrate = ()
     amount, born, dead, time = 0, 0, 0, 0
     pb.config(value=0)
     acting, built = False, False
-    while entities.__ne__([]):
-        entities[0].MyTimeHasCome()
     timer.config(text=f"Time: {time}")
-    lbr.delete(0, END)
     if bv2.get():
-        Grid(False)
+        # Grid(False)
         Grid(True)
 
 
 def ShowStatistics():
-    global time, birthrate, end, img1
-    stat = Toplevel(highlightthickness=8, highlightcolor="black")
-    root.call('wm', 'iconphoto', stat, img1)
-    stat.config(bg="#424242")
-    stat.transient(root)
-    stat.title("Stats")
-    stat.grab_set()
-    figure = Figure()
-    figure.patch.set_facecolor("#424242")
-    plot = figure.add_subplot(facecolor="silver")
-    plot.grid()
-    plot.set_xlabel("Time")
-    plot.set_ylabel("The number of born")
-    plot.set_title("Stat 1")
-    x = list(i for i in range(0, time))
+    Stop()
+    stats_window.deiconify()
+    stats_window.grab_set()
+    x = list(range(0, time))
     y = birthrate
-    if end:
-        del x[-1]
-    plot.plot(x, y)
-    fig1 = FigureCanvasTkAgg(figure, stat)
-    fig1.get_tk_widget().grid(row=0, column=0)
-    figure2 = Figure()
-    figure2.patch.set_facecolor("#424242")
-    plot2 = figure2.add_subplot(facecolor="silver")
-    plot2.set_xlabel("Time")
-    plot2.set_ylabel("Birth rate")
-    plot2.set_title("Stat 2")
-    br = y
-    if time > 1:
-        br = (0,)
-        for i in range(1, len(y)):
-            br += (y[i] - y[i - 1],)
-    plot2.plot(x, br)
-    plot2.grid()
-    fig2 = FigureCanvasTkAgg(figure2, stat)
-    fig2.get_tk_widget().grid(row=0, column=1)
-    stat.mainloop()
+    plot1.clear()
+    plot1.set_xlabel("Time")
+    plot1.set_ylabel("Population")
+    plot1.set_title("Dynamic of population")
+    plot1.grid()
+    plot1.plot(x, y)
+    canvas.draw()
+
+
+def AddPopulationParameterToText(kword:str, value:str):
+    population_text.insert(END, kword+": ", "keyword")
+    population_text.insert(END, value+"\n")
+
+
+def ShowPopulationInfo(event):
+    population_selection = lbr.curselection()
+    if population_selection: # If there is a selected population in listbox
+        key = int(lbr.get(population_selection[0]).split("_")[1])
+        Stop()
+        population_window.title(f"Population_{key} stats")
+        population_window.deiconify()
+        population_window.grab_set()
+        population_parameters = populations[key]
+        _time = population_parameters["time"]
+        _amount = population_parameters["amount"]
+        _allamount = population_parameters["allamount"]
+        _birthrate = population_parameters["birthrate"]
+        _deathage = population_parameters["deathage"]
+        _activeage = population_parameters["activeage"]
+        _passiveage = population_parameters["passiveage"]
+        _deathprobability = population_parameters["deathprobability"]
+        _firstentities = population_parameters["firstentities"]
+        _children = population_parameters["children"]
+        _born = population_parameters["born"]
+        _dead = population_parameters["dead"]
+        _randomness = population_parameters["randomness"]
+        population_text.config(state=NORMAL)
+        population_text.delete("1.0", END)
+        AddPopulationParameterToText("Time", str(_time))
+        AddPopulationParameterToText("Entities", str(_amount))
+        AddPopulationParameterToText("Max places", str(_allamount))
+        AddPopulationParameterToText("Death age", str(_deathage))
+        AddPopulationParameterToText("Active age", str(_activeage))
+        AddPopulationParameterToText("Passive age", str(_passiveage))
+        AddPopulationParameterToText("Sudden death(%)", str(_deathprobability))
+        AddPopulationParameterToText("Entities on start", str(_firstentities))
+        AddPopulationParameterToText("Children", str(_children))
+        AddPopulationParameterToText("Born", str(_born))
+        AddPopulationParameterToText("Dead", str(_dead))
+        AddPopulationParameterToText("Random max children", str(_randomness))
+        population_text.config(state=DISABLED)
+
+        x = list(range(0, _time))
+        y = _birthrate
+        population_plot.clear()
+        population_plot.set_xlabel("Time")
+        population_plot.set_ylabel("Population")
+        population_plot.set_title("Dynamic of population")
+        population_plot.grid()
+        population_plot.plot(x, y)
+        population_canvas.draw()
+    else:
+        pass
+
+
+def AddPopulation():
+    global population_key
+    population_key += 1
+    populations[population_key] = {
+        "time": time,
+        "amount": amount,
+        "allamount": allamount,
+        "birthrate": birthrate,
+        "deathage": deathage,
+        "activeage": activeage,
+        "passiveage": passiveage,
+        "deathprobability": deathprobability,
+        "firstentities": firstentities,
+        "children": children,
+        "born": born,
+        "dead": dead,
+        "randomness": randomness,
+    }
 
 
 def Build():
     global a, wd, ht, step, deathage, speed, cx, cy, deathprobability, entities, amount
-    global activeage, passiveage, children, time, wdconst, htconst, usedcoords, allamount
-    global birthrate, built, born, dead, end, firstentities, incsize, decsize
-    while entities.__ne__([]):
-        entities[0].MyTimeHasCome()
+    global activeage, passiveage, children, time, wdconst, htconst, allamount, usedcoords
+    global birthrate, built, born, dead, end, firstentities, incsize, decsize, randomness
+    for entity in entities:
+        entity.RemoveFromCanvas()
+    entities, usedcoords = [], []
     built, end = True, False
     birthrate = ()
     amount, born, dead, time = 0, 0, 0, 0
     pb.config(value=0)
     timer.config(text=f"Time: {time}")
-    lbr.delete(0, END)
     wd, ht = int(scwd.get()), int(scht.get())
     c.config(width=wd, height=ht)
     a = int(sc1.get())
@@ -259,6 +327,7 @@ def Build():
     speed = int(sc3.get())
     activeage, passiveage = int(sc4.get()), int(sc5.get())
     children, firstentities = int(sc7.get()), int(sc8.get())
+    randomness = bv4.get()
     step = ht / a if wd > ht else wd / a
     incsize = step / activeage
     decsize = step / (deathage - passiveage) if deathage.__ne__(passiveage) else step
@@ -280,7 +349,7 @@ def Build():
 
 
 def Start():
-    global acting, speed, built, end
+    global acting
     if not acting:
         if built and not end:
             acting = True
@@ -296,24 +365,30 @@ def Stop():
     acting = False
 
 
+def IncreaseAgeForEntities():
+    for ent in entities:
+            if not end: # Some entity can randomly produce the offspring and take the last place in this age so we need to check
+                ent.IncreaseAge()
+            else: # If all the places are taken there is no need to continue loop
+                break
+
+
 def AutoStep():
-    global step, speed, acting, time, entities, birthrate, amount
+    global time, birthrate
     if acting:
+        IncreaseAgeForEntities()
         time += 1
         timer.config(text=f"Time:{time}")
-        for ent in entities:
-            ent.IncreaseAge()
         birthrate += (amount,)
         root.after(speed, AutoStep)
 
 
 def Step():
-    global built, time, birthrate, entities, end
+    global time, birthrate
     if built and not end:
+        IncreaseAgeForEntities()
         time += 1
         timer.config(text=f"Time:{time}")
-        for ent in entities:
-            ent.IncreaseAge()
         birthrate += (amount,)
     else:
         showinfo("Start", "To begin, create the first entity!")
@@ -352,7 +427,7 @@ def SetActiveAge():
 
 
 def Grid(mode=True):
-    global gridlines, step, a, wd, ht, wdconst, htconst
+    global gridlines, wdconst, htconst
     if mode:
         Grid(False)
         wdconst, htconst = (wd - ht) / 2, (ht - wd) / 2
@@ -374,9 +449,6 @@ def Grid(mode=True):
 
 
 def DelAndQuit():
-    global entities
-    while entities.__ne__([]):
-        entities[0].MyTimeHasCome()
     root.destroy()
 
 
@@ -396,7 +468,6 @@ def BindB1Down():
                            dash=(5, 1), tag="moving", width=2)
 
     def PlaceInfo(event):
-        global gridlines, wd
         c.delete("moving")
         c.config(cursor="arrow")
         k = len(set(c.find_overlapping(xb, yb, c.canvasx(event.x), c.canvasy(event.y))) - set(gridlines))
@@ -414,6 +485,13 @@ def ScaleMotion(scale, label):
     label.config(text=str(int(scale.get())))
 
 
+def SetDefaultCanvasSize():
+    wd, ht = 500, 500
+    c.config(width=500, height=500)
+    scwd.set(wd)
+    scht.set(ht)
+
+
 def AddTooltips():
     ToolTip(lab1, "Number of lines\n(and columns)").waittime = 350
     ToolTip(lab2, "Lifetime").waittime = 350
@@ -425,8 +503,9 @@ def AddTooltips():
     ToolTip(lab7, "The number of offspring.\nMay vary depending on whether randomness is enabled").waittime = 350
     ToolTip(lab8, "The number of entities in the beginning").waittime = 350
 
+# Defining global variables
 
-icon = b"iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAAD" \
+ICON_BYTES = b"iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAAD" \
        b"qYAAAXcJy6UTwAAAAJcEhZcwAADsQAAA7EAZUrDhsAAAABYktHRFoDu6WiAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDE0" \
        b"LTAxLTI2VDIwOjU5OjM3KzAyOjAw+5oHdwAAACV0RVh0ZGF0ZTptb2RpZnkAMjAxNC0wMS0yNlQyMDo1OTowMCswMj" \
        b"owMMHvhqYAAAHRSURBVDhPjZO/S1tRFMe/7+V3mgRMkCRDC0kIFDoYB80kVLIUNI6l+AcUq+BSqIUudfIfUAdHF9FB" \
@@ -452,9 +531,12 @@ passiveage = 35
 children = 2
 built, acting, end = False, False, False
 firstentities = 1
+randomness = False
+populations = {}
+population_key = 0
 
 root = ThemedTk(theme="black")
-img1 = PhotoImage(data=icon)
+img1 = PhotoImage(data=ICON_BYTES)
 root.call('wm', 'iconphoto', root._w, img1)
 root.geometry("+0+0")
 root.config(bg="#424242")
@@ -505,10 +587,10 @@ sc5.config(command=lambda e: ScaleMotion(sc5, lab5))
 sc6 = ttk.Scale(ft, from_=0, to=100, orient=HORIZONTAL)
 sc6.set(deathprobability)
 sc6.grid(row=0, column=6, padx=10, pady=4)
-lab6 = ttk.Label(ft, text="Death probability", width=18)
+lab6 = ttk.Label(ft, text="Sudden death probability", width=18)
 lab6.grid(row=1, column=6, padx=10, pady=4)
 sc6.bind("<Enter>", lambda e: ScaleMotion(sc6, lab6))
-sc6.bind("<Leave>", lambda e: lab6.config(text="Death probability"))
+sc6.bind("<Leave>", lambda e: lab6.config(text="Sudden death probability"))
 sc6.config(command=lambda e: ScaleMotion(sc6, lab6))
 sc7 = ttk.Scale(ft, from_=1, to=20, orient=HORIZONTAL)
 sc7.set(children)
@@ -547,6 +629,7 @@ BindB1Down()
 fcc.pack(side=LEFT)
 sb1 = ttk.Scrollbar(fc, orient=VERTICAL)
 lbr = Listbox(fc, yscrollcommand=sb1.set, bg="silver", width=25)
+lbr.bind('<Double-1>', lambda e: ShowPopulationInfo(e))
 lbr.config(yscrollcommand=sb1.set)
 lbr.pack(side=LEFT, fill=Y, padx=10)
 sb1.pack(side=LEFT, fill=Y)
@@ -565,7 +648,7 @@ scht.grid(row=1, column=1, padx=10, pady=6)
 fcb.pack(side=TOP, anchor=W, pady=4, padx=4)
 bv = BooleanVar()
 bv.set(False)
-btn4 = ttk.Button(fc, text="Default canvas size", width=25, command=lambda: c.config(width=500, height=500))
+btn4 = ttk.Button(fc, text="Default canvas size", width=25, command=SetDefaultCanvasSize)
 btn4.pack(side=TOP, anchor=W, pady=4, padx=4)
 bv5 = BooleanVar()
 bv5.set(False)
@@ -586,7 +669,7 @@ cb2 = ttk.Checkbutton(fc, text="Grid", variable=bv2, onvalue=True, offvalue=Fals
                       command=lambda: Grid(bv2.get()))
 cb2.pack(side=TOP, anchor=W, pady=4, padx=4)
 bv4 = BooleanVar()
-bv4.set(False)
+bv4.set(randomness)
 cb4 = ttk.Checkbutton(fc, text="Randeomness", variable=bv4, onvalue=True, offvalue=False)
 cb4.pack(side=TOP, anchor=W, pady=4, padx=4)
 pb = ttk.Progressbar(fc, value=0, length=200)
@@ -611,5 +694,51 @@ timer = ttk.Label(fb, text=f"Time: {time}", font=("", 14), width=12)
 timer.pack(side=LEFT, padx=10, pady=10)
 fb.pack(side=BOTTOM, fill="x")
 mf.pack(padx=8, pady=8)
+
 AddTooltips()
+
+# Defining Toplevel Population stat
+
+FIGURE_SIZE = (4, 3)
+
+
+population_window = Toplevel(root, highlightthickness=8, highlightcolor="black")
+root.call('wm', 'iconphoto', population_window, img1)
+population_window.config(bg="#424242")
+population_window.transient(root)
+population_window.withdraw()
+population_window.protocol("WM_DELETE_WINDOW", lambda: (population_window.withdraw(), population_window.grab_release()))
+
+population_text = Text(population_window, width=30, font=("Arial", 11, "normal"), bg="#424242", fg="silver", wrap=WORD, relief=FLAT)
+population_text.tag_config('keyword', foreground="yellow", font=("Arial", 11, "bold"))
+population_text.grid(row=0, column=0)
+
+population_figure = Figure(figsize=FIGURE_SIZE, constrained_layout=True)
+population_figure.patch.set_facecolor("#424242")
+population_plot = population_figure.add_subplot(facecolor="silver")
+population_canvas = FigureCanvasTkAgg(population_figure, population_window)
+population_canvas.get_tk_widget().grid(row=0, column=1)
+
+# End defining
+
+# Defining TopLevel Statictics
+
+stats_window = Toplevel(root, highlightthickness=8, highlightcolor="black")
+root.call('wm', 'iconphoto', stats_window, img1)
+stats_window.config(bg="#424242")
+stats_window.transient(root)
+stats_window.title("Stats")
+stats_window.withdraw()
+stats_window.protocol("WM_DELETE_WINDOW", lambda: (stats_window.withdraw(), stats_window.grab_release()))
+
+figure = Figure(figsize=FIGURE_SIZE, constrained_layout=True)
+figure.patch.set_facecolor("#424242")
+plot1 = figure.add_subplot(facecolor="silver")
+canvas = FigureCanvasTkAgg(figure, stats_window)
+canvas.get_tk_widget().grid(row=0, column=0)
+
+# End defining
+
 root.mainloop()
+
+# End defining
